@@ -63,7 +63,7 @@ pipeline {
                 sh '''
                     set -e
                     python3 -m venv .venv
-                    source .venv/bin/activate
+                    . .venv/bin/activate
                     pip install -r requirements.txt -r requirements-dev.txt -q
                     
                     echo "Running pytest..."
@@ -93,7 +93,7 @@ pipeline {
                     echo "═══════════════════════════════════════════"
                 }
                 sh '''
-                    source .venv/bin/activate
+                    . .venv/bin/activate
                     
                     echo "Running flake8 linting..."
                     flake8 app/ --max-line-length=100 --exit-zero || true
@@ -114,7 +114,7 @@ pipeline {
                     echo "═══════════════════════════════════════════"
                 }
                 sh '''
-                    source .venv/bin/activate
+                    . .venv/bin/activate
                     
                     # Check for vulnerable dependencies
                     pip install bandit -q
