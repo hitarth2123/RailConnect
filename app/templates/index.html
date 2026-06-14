@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard — RailConnect{% endblock %}
+
+{% block head %}
+<style>
+    .pod-info-box {
+        background: linear-gradient(135deg, #1a7f4d 0%, #22c55e 100%);
+        border: 3px solid #16a34a;
+        border-radius: 8px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+        color: white;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+    
+    .pod-info-box h2 {
+        font-size: 1.5rem;
+        margin-bottom: 1rem;
+        font-family: 'Courier New', monospace;
+        font-weight: bold;
+    }
+    
+    .pod-info-box .info-line {
+        font-size: 1rem;
+        margin: 0.5rem 0;
+        font-family: 'Courier New', monospace;
+    }
+    
+    .pod-info-box .info-line strong {
+        font-weight: bold;
+    }
+    
+    .pod-info-box .refresh-hint {
+        font-size: 0.85rem;
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid rgba(255, 255, 255, 0.3);
+        color: rgba(255, 255, 255, 0.9);
+        font-style: italic;
+    }
+    
+    .grid-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+    
+    .service-card {
+        background: white;
+        border-radius: 8px;
+        padding: 1.5rem;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        border-left: 4px solid #0F2D54;
+    }
+    
+    .service-card h3 {
+        font-size: 1rem;
+        margin-bottom: 0.5rem;
+        color: #0F2D54;
+        text-transform: capitalize;
+    }
+    
+    .service-card .service-name {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+    
+    .status-indicator {
+        font-size: 1.2rem;
+    }
+    
+    .service-status {
+        font-weight: bold;
+        margin-bottom: 0.5rem;
+    }
+    
+    .service-status.online {
+        color: #22c55e;
+    }
+    
+    .service-status.degraded {
+        color: #eab308;
+    }
+    
+    .service-status.offline {
+        color: #ef4444;
+    }
+    
+    .latency {
+        font-size: 0.85rem;
+        color: #888;
+    }
+    
+    .stats-section h2 {
+        font-size: 1.5rem;
+        color: #0F2D54;
+        margin-bottom: 1.5rem;
+    }
+    
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+    
+    .stat-card {
+        background: white;
+        border-radius: 8px;
+        padding: 1.5rem;
+        text-align: center;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        border-top: 3px solid #0F2D54;
+    }
+    
+    .stat-card .stat-number {
+        font-size: 2rem;
+        font-weight: bold;
+        color: #0F2D54;
+        margin-bottom: 0.5rem;
+        font-family: 'Courier New', monospace;
+    }
+    
+    .stat-card .stat-label {
+        font-size: 0.9rem;
+        color: #666;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    
+    .action-buttons {
+        display: flex;
+        gap: 1rem;
+        margin-top: 2rem;
+        flex-wrap: wrap;
+    }
+    
+    .btn {
+        display: inline-block;
+        padding: 0.75rem 1.5rem;
+        background-color: #0F2D54;
+        color: white;
+        text-decoration: none;
+        border-radius: 6px;
+        font-weight: bold;
+        transition: background-color 0.2s;
+        border: none;
+        cursor: pointer;
+        font-size: 1rem;
+    }
+    
+    .btn:hover {
+        background-color: #1a3d6f;
+    }
+    
+    .btn-secondary {
+        background-color: #666;
+    }
+    
+    .btn-secondary:hover {
+        background-color: #555;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pod-info-box">
+    <h2>🖥 Served by Kubernetes Pod</h2>
+    <div class="info-line"><strong>Pod Name:</strong> <span style="font-size: 1.2rem;">{{ pod_name }}</span></div>
+    <div class="info-line"><strong>Version:</strong> {{ version }}</div>
+    <div class="info-line"><strong>Last Refreshed:</strong> <span id="ts"></span></div>
+    <div class="refresh-hint">💡 Refresh this page — the pod name changes, proving load balancing is working</div>
+</div>
+
+<section class="stats-section">
+    <h2>📊 System Services Status</h2>
+    <div class="grid-container">
+        {% for name, data in system_status.items() %}
+        <div class="service-card">
+            <div class="service-name">
+                <span class="status-indicator">
+                    {% if data.status == 'Online' %}
+                        🟢
+                    {% elif data.status == 'Degraded' %}
+                        🟡
+                    {% else %}
+                        🔴
+                    {% endif %}
+                </span>
+                <h3>{{ name.replace('_', ' ').title() }}</h3>
+            </div>
+            <div class="service-status {% if data.status == 'Online' %}online{% elif data.status == 'Degraded' %}degraded{% else %}offline{% endif %}">
+                {{ data.status }}
+            </div>
+            <div class="latency">Latency: {{ data.latency_ms }}ms</div>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+
+<section class="stats-section">
+    <h2>📈 Ticket Statistics</h2>
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-number">{{ ticket_stats.booked_today }}</div>
+            <div class="stat-label">Booked Today</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">{{ ticket_stats.cancelled_today }}</div>
+            <div class="stat-label">Cancelled Today</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">{{ ticket_stats.active_passengers }}</div>
+            <div class="stat-label">Active Passengers</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">{{ ticket_stats.revenue_today }}</div>
+            <div class="stat-label">Revenue Today</div>
+        </div>
+    </div>
+</section>
+
+<section class="stats-section">
+    <div class="action-buttons">
+        <a href="/schedule" class="btn">📋 View Train Schedule →</a>
+        <a href="/api/status" class="btn btn-secondary">📡 View Raw API →</a>
+    </div>
+</section>
+
+<script>
+    document.getElementById('ts').textContent = new Date().toLocaleTimeString();
+</script>
+{% endblock %}

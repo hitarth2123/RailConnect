@@ -1,0 +1,39 @@
+# Local Prometheus configuration for docker-compose testing
+# Used by docker-compose.yml when running Prometheus locally
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'local'
+    environment: 'development'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+# Alert rule files
+rule_files:
+  - '/etc/prometheus/rules/*.yml'
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # RailConnect Flask app
+  - job_name: 'railconnect-app'
+    static_configs:
+      - targets: ['railconnect-app:5000']
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+    scrape_timeout: 5s
+
+  # Docker host monitoring (if using docker-compose)
+  - job_name: 'docker'
+    static_configs:
+      - targets: ['127.0.0.1:9323']

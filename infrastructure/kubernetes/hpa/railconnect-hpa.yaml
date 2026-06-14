@@ -1,0 +1,102 @@
+---
+# Horizontal Pod Autoscaler for RailConnect
+# Scales pods 3→30 based on CPU utilization
+# Requires metrics-server for CPU metrics collection
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: railconnect-app-hpa
+  namespace: railconnect-prod
+  labels:
+    app: railconnect-app
+    component: autoscaling
+
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: railconnect-app
+
+  # Pod count boundaries
+  minReplicas: 3   # Minimum pods — always running
+  maxReplicas: 30  # Maximum pods — watch this during load test!
+
+  # Scaling metrics
+  metrics:
+    # Scale based on CPU utilization
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 50  # Scale up when avg CPU > 50%
+
+    # Scale based on memory utilization (optional)
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 75  # Scale up when avg memory > 75%
+
+  # Scaling behavior: how fast to scale up/down
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 30  # Allow scale-up to happen quickly
+      policies:
+        - type: Pods
+          value: 5              # Add up to 5 pods per minute
+          periodSeconds: 60
+
+    scaleDown:
+      stabilizationWindowSeconds: 300  # Wait 5 min before scaling down
+      policies:
+        - type: Pods
+          value: 2              # Remove max 2 pods per minute
+          periodSeconds: 60
+
+---
+# HPA for Staging (more conservative)
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: railconnect-app-hpa
+  namespace: railconnect-staging
+  labels:
+    app: railconnect-app
+    component: autoscaling
+    environment: staging
+
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: railconnect-app
+
+  minReplicas: 1   # Lower minimum in staging
+  maxReplicas: 10  # Lower maximum in staging
+
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70  # Higher threshold in staging
+
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60

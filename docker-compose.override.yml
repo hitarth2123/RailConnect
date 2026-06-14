@@ -1,0 +1,17 @@
+version: '3.8'
+
+# Docker Compose Override - Development Settings
+# Automatically merged with docker-compose.yml when running 'docker-compose up'
+
+services:
+  app:
+    # Enable Flask debug mode for development
+    environment:
+      - FLASK_ENV=development
+      - FLASK_DEBUG=1
+    # Mount entire app directory for hot-reload
+    volumes:
+      - ./app:/app/app
+      - ./tests:/app/tests
+    # Run Flask development server instead of Gunicorn (same port as production)
+    command: python -m flask run --host=0.0.0.0 --port=5000

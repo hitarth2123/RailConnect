@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  # Flask Application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: railconnect-app
+    ports:
+      - "5003:5000"
+    environment:
+      - FLASK_ENV=production
+      - FLASK_APP=app
+      - POD_NAME=docker-container
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://railconnect:password@postgres:5432/railconnect
+      - APP_VERSION=1.0.0
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - railconnect-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+    volumes:
+      - ./app:/app/app:ro
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Redis Cache (Mock)
+  redis:
+    image: redis:7-alpine
+    container_name: railconnect-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - railconnect-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+
+  # PostgreSQL Database (Mock)
+  postgres:
+    image: postgres:15-alpine
+    container_name: railconnect-postgres
+    environment:
+      - POSTGRES_USER=railconnect
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=railconnect
+    ports:
+      - "5432:5432"
+    networks:
+      - railconnect-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U railconnect -d railconnect"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  railconnect-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local

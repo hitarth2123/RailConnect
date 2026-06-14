@@ -1,0 +1,49 @@
+---
+# Kubernetes Namespaces for RailConnect
+# Provides logical isolation between environments
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: railconnect-prod
+  labels:
+    name: railconnect-prod
+    environment: production
+    monitoring: enabled
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: railconnect-staging
+  labels:
+    name: railconnect-staging
+    environment: staging
+    monitoring: enabled
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    name: monitoring
+    monitoring: enabled
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ingress-nginx
+  labels:
+    name: ingress-nginx
+    monitoring: enabled
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vault
+  labels:
+    name: vault
+    monitoring: enabled

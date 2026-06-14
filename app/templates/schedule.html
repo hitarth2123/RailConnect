@@ -1,0 +1,269 @@
+{% extends "base.html" %}
+
+{% block title %}Live Schedule — RailConnect{% endblock %}
+
+{% block head %}
+<meta http-equiv="refresh" content="30">
+<style>
+    .pod-info-box {
+        background: linear-gradient(135deg, #1a7f4d 0%, #22c55e 100%);
+        border: 3px solid #16a34a;
+        border-radius: 8px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+        color: white;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+    
+    .pod-info-box h2 {
+        font-size: 1.5rem;
+        margin-bottom: 1rem;
+        font-family: 'Courier New', monospace;
+        font-weight: bold;
+    }
+    
+    .pod-info-box .info-line {
+        font-size: 1rem;
+        margin: 0.5rem 0;
+        font-family: 'Courier New', monospace;
+    }
+    
+    .pod-info-box .info-line strong {
+        font-weight: bold;
+    }
+    
+    .pod-info-box .refresh-hint {
+        font-size: 0.85rem;
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid rgba(255, 255, 255, 0.3);
+        color: rgba(255, 255, 255, 0.9);
+        font-style: italic;
+    }
+    
+    .schedule-header {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 2rem;
+    }
+    
+    .schedule-header h2 {
+        font-size: 1.5rem;
+        color: #0F2D54;
+        margin: 0;
+    }
+    
+    .blinking-dot {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        background-color: #22c55e;
+        border-radius: 50%;
+        animation: blink 1s infinite;
+    }
+    
+    @keyframes blink {
+        0%, 49%, 100% { opacity: 1; }
+        50%, 99% { opacity: 0.3; }
+    }
+    
+    .schedule-table {
+        width: 100%;
+        border-collapse: collapse;
+        background: white;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+    
+    .schedule-table thead {
+        background-color: #0F2D54;
+        color: white;
+    }
+    
+    .schedule-table th {
+        padding: 1rem;
+        text-align: left;
+        font-weight: bold;
+        border-bottom: 2px solid #0F2D54;
+    }
+    
+    .schedule-table td {
+        padding: 1rem;
+        border-bottom: 1px solid #eee;
+    }
+    
+    .schedule-table tbody tr:hover {
+        background-color: #f9f9f9;
+    }
+    
+    .schedule-table tbody tr:last-child td {
+        border-bottom: none;
+    }
+    
+    .train-id {
+        font-family: 'Courier New', monospace;
+        font-weight: bold;
+        color: #0F2D54;
+    }
+    
+    .route-name {
+        font-weight: 500;
+    }
+    
+    .time {
+        font-family: 'Courier New', monospace;
+        color: #666;
+    }
+    
+    .platform-badge {
+        display: inline-block;
+        background-color: #0F2D54;
+        color: white;
+        padding: 0.25rem 0.75rem;
+        border-radius: 4px;
+        font-weight: bold;
+    }
+    
+    .occupancy-bar {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .occupancy-progress {
+        flex: 1;
+        height: 8px;
+        background-color: #eee;
+        border-radius: 4px;
+        overflow: hidden;
+    }
+    
+    .occupancy-fill {
+        height: 100%;
+        background-color: #22c55e;
+        transition: width 0.3s;
+    }
+    
+    .occupancy-text {
+        font-size: 0.85rem;
+        color: #666;
+        min-width: 40px;
+        text-align: right;
+    }
+    
+    .status-on-time {
+        color: #22c55e;
+        font-weight: bold;
+    }
+    
+    .status-delayed {
+        color: #f97316;
+        font-weight: bold;
+    }
+    
+    .status-arriving {
+        color: #0ea5e9;
+        font-weight: bold;
+    }
+    
+    .table-footer {
+        padding: 1.5rem;
+        background-color: #f9f9f9;
+        border-top: 1px solid #eee;
+        font-size: 0.85rem;
+        color: #666;
+        text-align: center;
+    }
+    
+    .back-link {
+        display: inline-block;
+        margin-top: 1.5rem;
+        padding: 0.75rem 1.5rem;
+        background-color: #0F2D54;
+        color: white;
+        text-decoration: none;
+        border-radius: 6px;
+        font-weight: bold;
+        transition: background-color 0.2s;
+    }
+    
+    .back-link:hover {
+        background-color: #1a3d6f;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pod-info-box">
+    <h2>🖥 Served by Kubernetes Pod</h2>
+    <div class="info-line"><strong>Pod Name:</strong> <span style="font-size: 1.2rem;">{{ pod_name }}</span></div>
+    <div class="info-line"><strong>Version:</strong> {{ version }}</div>
+    <div class="info-line"><strong>Last Refreshed:</strong> <span id="ts"></span></div>
+    <div class="refresh-hint">💡 This page auto-refreshes every 30 seconds</div>
+</div>
+
+<div class="schedule-header">
+    <h2>📋 Live Train Schedule</h2>
+    <span class="blinking-dot"></span>
+</div>
+
+<div style="overflow-x: auto;">
+    <table class="schedule-table">
+        <thead>
+            <tr>
+                <th>Train ID</th>
+                <th>Route</th>
+                <th>Departure</th>
+                <th>Arrival</th>
+                <th>Platform</th>
+                <th>Occupancy</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for train in trains %}
+            <tr>
+                <td class="train-id">{{ train.train_id }}</td>
+                <td class="route-name">{{ train.route }}</td>
+                <td class="time">{{ train.departure }}</td>
+                <td class="time">{{ train.arrival }}</td>
+                <td>
+                    <span class="platform-badge">Plat. {{ train.platform }}</span>
+                </td>
+                <td>
+                    <div class="occupancy-bar">
+                        <div class="occupancy-progress">
+                            <div class="occupancy-fill" style="width: {{ train.coach_occupancy }}%;"></div>
+                        </div>
+                        <span class="occupancy-text">{{ train.coach_occupancy }}%</span>
+                    </div>
+                </td>
+                <td>
+                    {% if train.status == 'On Time' %}
+                        <span class="status-on-time">{{ train.status }}</span>
+                    {% elif train.status.startswith('Delayed') %}
+                        <span class="status-delayed">{{ train.status }}</span>
+                    {% elif train.status == 'Arriving' %}
+                        <span class="status-arriving"><strong>{{ train.status }}</strong></span>
+                    {% else %}
+                        <span>{{ train.status }}</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="table-footer">
+    Data updates every 30 seconds | Served by pod: <strong>{{ pod_name }}</strong>
+</div>
+
+<a href="/" class="back-link">← Back to Dashboard</a>
+
+<script>
+    document.getElementById('ts').textContent = new Date().toLocaleTimeString();
+</script>
+{% endblock %}

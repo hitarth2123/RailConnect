@@ -1,0 +1,183 @@
+---
+# Kubernetes Ingress for RailConnect
+# Routes external HTTP/HTTPS traffic to services
+# Requires NGINX Ingress Controller or similar
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: railconnect-ingress
+  namespace: railconnect-prod
+  labels:
+    app: railconnect-app
+    component: ingress
+
+  annotations:
+    # NGINX Ingress Controller annotations
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+
+    # Rate limiting (optional)
+    nginx.ingress.kubernetes.io/limit-rps: "100"
+    nginx.ingress.kubernetes.io/limit-connections: "10"
+
+    # CORS (optional)
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+
+    # Custom error pages
+    nginx.ingress.kubernetes.io/custom-http-errors: "404,503"
+    nginx.ingress.kubernetes.io/default-backend: railconnect-app
+
+spec:
+  ingressClassName: nginx  # Use NGINX Ingress Controller
+
+  rules:
+    # Main domain
+    - host: railconnect.example.com  # TODO: Update to your domain
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: railconnect-app
+                port:
+                  number: 80
+
+    # API subdomain (optional)
+    - host: api.railconnect.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: railconnect-app
+                port:
+                  number: 80
+
+  # TLS/SSL configuration (requires cert-manager)
+  # tls:
+  #   - hosts:
+  #       - railconnect.example.com
+  #       - api.railconnect.example.com
+  #     secretName: railconnect-tls-cert
+
+---
+# Ingress for Staging environment
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: railconnect-ingress
+  namespace: railconnect-staging
+  labels:
+    app: railconnect-app
+    component: ingress
+    environment: staging
+
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+
+spec:
+  ingressClassName: nginx
+
+  rules:
+    - host: staging.railconnect.example.com  # TODO: Update domain
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: railconnect-app
+                port:
+                  number: 80
+
+---
+# Optional: AWS ALB Ingress Controller alternative
+# Uncomment if using AWS ALB instead of NGINX
+
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: railconnect-alb
+#   namespace: railconnect-prod
+#   annotations:
+#     alb.ingress.kubernetes.io/scheme: internet-facing
+#     alb.ingress.kubernetes.io/target-type: ip
+#     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+#     alb.ingress.kubernetes.io/ssl-redirect: '443'
+#     alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:...
+
+# spec:
+#   ingressClassName: alb
+
+#   rules:
+#     - host: railconnect.example.com
+#       http:
+#         paths:
+#           - path: /
+#             pathType: Prefix
+#             backend:
+#               service:
+#                 name: railconnect-app
+#                 port:
+#                   number: 80
+
+---
+# Network Policy: Control traffic to/from pods (optional)
+# Restricts which pods can talk to railconnect-app
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: railconnect-network-policy
+  namespace: railconnect-prod
+  labels:
+    app: railconnect-app
+
+spec:
+  podSelector:
+    matchLabels:
+      app: railconnect-app
+
+  policyTypes:
+    - Ingress
+    - Egress
+
+  ingress:
+    # Allow from Ingress Controller
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 5000
+
+    # Allow from Prometheus for metrics
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: monitoring
+      ports:
+        - protocol: TCP
+          port: 5000
+
+  egress:
+    # Allow DNS
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+
+    # Allow external HTTPS
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 443

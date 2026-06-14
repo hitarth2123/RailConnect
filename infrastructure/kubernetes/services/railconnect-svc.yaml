@@ -1,0 +1,109 @@
+---
+# RailConnect Kubernetes Service (Production)
+# Exposes pods on port 80 → 5000 (ClusterIP: internal only)
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: railconnect-app
+  namespace: railconnect-prod
+  labels:
+    app: railconnect-app
+    component: api
+  annotations:
+    description: "RailConnect Flask application service"
+
+spec:
+  type: ClusterIP  # Internal service — accessed via Ingress
+
+  selector:
+    app: railconnect-app
+
+  ports:
+    - name: http
+      port: 80             # Service port (internal)
+      targetPort: 5000     # Pod container port
+      protocol: TCP
+
+  sessionAffinity: None    # No sticky sessions (stateless app)
+  timeoutSeconds: 30
+
+---
+# RailConnect Kubernetes Service (Staging)
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: railconnect-app
+  namespace: railconnect-staging
+  labels:
+    app: railconnect-app
+    component: api
+    environment: staging
+
+spec:
+  type: ClusterIP
+
+  selector:
+    app: railconnect-app
+
+  ports:
+    - name: http
+      port: 80
+      targetPort: 5000
+      protocol: TCP
+
+  sessionAffinity: None
+  timeoutSeconds: 30
+
+---
+# Metrics Service for Prometheus scraping
+# Prometheus will scrape /metrics on port 5000
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: railconnect-metrics
+  namespace: railconnect-prod
+  labels:
+    app: railconnect-app
+    component: metrics
+
+spec:
+  type: ClusterIP
+
+  selector:
+    app: railconnect-app
+
+  ports:
+    - name: metrics
+      port: 5000
+      targetPort: 5000
+      protocol: TCP
+
+---
+# Optional: LoadBalancer Service for direct pod access (useful for testing)
+# Uncomment to enable — creates AWS ELB
+
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: railconnect-app-lb
+#   namespace: railconnect-prod
+#   labels:
+#     app: railconnect-app
+#     type: load-balancer
+
+# spec:
+#   type: LoadBalancer
+
+#   selector:
+#     app: railconnect-app
+
+#   ports:
+#     - name: http
+#       port: 80
+#       targetPort: 5000
+#       protocol: TCP
+
+#   sessionAffinity: None

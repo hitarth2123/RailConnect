@@ -1,0 +1,257 @@
+---
+# Prometheus Alerting Rules for RailConnect
+# Monitors application health, resource usage, and cluster metrics
+
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: railconnect-alerts
+  namespace: monitoring
+  labels:
+    prometheus: kube-prometheus-stack
+    release: prometheus
+
+spec:
+  groups:
+    - name: railconnect.rules
+      interval: 30s
+
+      rules:
+        # ═══════════════════════════════════════════════════════════════
+        # RAILCONNECT APPLICATION ALERTS
+        # ═══════════════════════════════════════════════════════════════
+
+        - alert: RailConnectDown
+          expr: up{job="railconnect-app", namespace="railconnect-prod"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            component: railconnect-app
+          annotations:
+            summary: "RailConnect is DOWN"
+            description: "RailConnect pods unreachable for 2 minutes. Immediate action required."
+            dashboard: "http://grafana:3000/d/railconnect"
+
+        - alert: RailConnectHighErrorRate
+          expr: rate(flask_http_request_total{status=~"5..",namespace="railconnect-prod"}[5m]) > 0.05
+          for: 2m
+          labels:
+            severity: warning
+            component: railconnect-app
+          annotations:
+            summary: "High error rate (5xx) detected"
+            description: "Error rate: {{ $value | humanizePercentage }} over 5 minutes"
+
+        - alert: RailConnectHighLatency
+          expr: histogram_quantile(0.95, rate(flask_http_request_duration_seconds_bucket{namespace="railconnect-prod"}[5m])) > 1
+          for: 5m
+          labels:
+            severity: warning
+            component: railconnect-app
+          annotations:
+            summary: "High request latency detected"
+            description: "P95 latency: {{ $value }}s (threshold: 1s)"
+
+        - alert: RailConnectNoHealthyPods
+          expr: |
+            count(kube_pod_status_phase{pod=~"railconnect-app-.*",
+                                        namespace="railconnect-prod",
+                                        phase="Running"}) == 0
+          for: 1m
+          labels:
+            severity: critical
+            component: railconnect-app
+          annotations:
+            summary: "No healthy RailConnect pods running"
+            description: "All pods are down or not running in production namespace"
+
+        - alert: RailConnectPodCrashLooping
+          expr: |
+            rate(kube_pod_container_status_restarts_total{namespace="railconnect-prod",
+                                                          pod=~"railconnect-app-.*"}[15m]) > 0
+          for: 5m
+          labels:
+            severity: warning
+            component: railconnect-app
+          annotations:
+            summary: "RailConnect pod is crash-looping"
+            description: "Pod {{ $labels.pod }} restarted multiple times"
+
+        # ═══════════════════════════════════════════════════════════════
+        # RESOURCE UTILIZATION ALERTS
+        # ═══════════════════════════════════════════════════════════════
+
+        - alert: RailConnectHighCPU
+          expr: |
+            sum(rate(container_cpu_usage_seconds_total{pod=~"railconnect-app-.*",
+                                                        namespace="railconnect-prod"}[5m])) > 0.8
+          for: 5m
+          labels:
+            severity: warning
+            component: railconnect-app
+          annotations:
+            summary: "High CPU usage on RailConnect"
+            description: "CPU usage: {{ $value | humanizePercentage }} (threshold: 80%)"
+
+        - alert: RailConnectHighMemory
+          expr: |
+            sum(container_memory_usage_bytes{pod=~"railconnect-app-.*",
+                                             namespace="railconnect-prod"}) /
+            sum(container_spec_memory_limit_bytes{pod=~"railconnect-app-.*",
+                                                  namespace="railconnect-prod"}) > 0.9
+          for: 5m
+          labels:
+            severity: warning
+            component: railconnect-app
+          annotations:
+            summary: "High memory usage on RailConnect"
+            description: "Memory usage: {{ $value | humanizePercentage }} (threshold: 90%)"
+
+        - alert: RailConnectOutOfMemory
+          expr: |
+            sum(container_memory_usage_bytes{pod=~"railconnect-app-.*",
+                                             namespace="railconnect-prod"}) /
+            sum(container_spec_memory_limit_bytes{pod=~"railconnect-app-.*",
+                                                  namespace="railconnect-prod"}) > 1.0
+          for: 1m
+          labels:
+            severity: critical
+            component: railconnect-app
+          annotations:
+            summary: "RailConnect pod OOMKilled"
+            description: "Pod exceeded memory limit. Immediate action required."
+
+        # ═══════════════════════════════════════════════════════════════
+        # KUBERNETES CLUSTER ALERTS
+        # ═══════════════════════════════════════════════════════════════
+
+        - alert: KubernetesNodeNotReady
+          expr: |
+            kube_node_status_condition{condition="Ready",status="true"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            component: kubernetes
+          annotations:
+            summary: "Kubernetes node is not ready"
+            description: "Node {{ $labels.node }} is not in Ready state"
+
+        - alert: KubernetesMemoryPressure
+          expr: |
+            kube_node_status_condition{condition="MemoryPressure",status="true"} == 1
+          for: 5m
+          labels:
+            severity: warning
+            component: kubernetes
+          annotations:
+            summary: "Kubernetes memory pressure detected"
+            description: "Node {{ $labels.node }} has memory pressure"
+
+        - alert: KubernetesDiskPressure
+          expr: |
+            kube_node_status_condition{condition="DiskPressure",status="true"} == 1
+          for: 5m
+          labels:
+            severity: warning
+            component: kubernetes
+          annotations:
+            summary: "Kubernetes disk pressure detected"
+            description: "Node {{ $labels.node }} has disk pressure"
+
+        # ═══════════════════════════════════════════════════════════════
+        # HPA (AUTOSCALING) ALERTS
+        # ═══════════════════════════════════════════════════════════════
+
+        - alert: HPAMaxedOut
+          expr: |
+            kube_hpa_status_current_replicas{horizontalpodautoscaler="railconnect-app-hpa",
+                                             namespace="railconnect-prod"}
+            ==
+            kube_hpa_status_desired_replicas{horizontalpodautoscaler="railconnect-app-hpa",
+                                             namespace="railconnect-prod"}
+            ==
+            kube_hpa_status_desired_replicas{horizontalpodautoscaler="railconnect-app-hpa",
+                                             namespace="railconnect-prod"}
+          for: 10m
+          labels:
+            severity: warning
+            component: hpa
+          annotations:
+            summary: "HPA at maximum replicas"
+            description: "RailConnect HPA is at max replicas (30) for 10+ minutes. Load may exceed capacity."
+
+        - alert: HPAScalingFailure
+          expr: |
+            kube_hpa_status_current_replicas{horizontalpodautoscaler="railconnect-app-hpa",
+                                             namespace="railconnect-prod"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            component: hpa
+          annotations:
+            summary: "HPA unable to scale pods"
+            description: "HPA is unable to scale replicas. Check pod resources and events."
+
+        # ═══════════════════════════════════════════════════════════════
+        # DATABASE ALERTS (if RDS monitoring is enabled)
+        # ═══════════════════════════════════════════════════════════════
+
+        - alert: RDSHighConnections
+          expr: |
+            aws_rds_database_connections{db_instance_identifier="railconnect-db"} > 80
+          for: 5m
+          labels:
+            severity: warning
+            component: rds
+          annotations:
+            summary: "RDS high connection count"
+            description: "RDS connections: {{ $value }}/100 (80% threshold)"
+
+        # ═══════════════════════════════════════════════════════════════
+        # PROMETHEUS SELF-MONITORING
+        # ═══════════════════════════════════════════════════════════════
+
+        - alert: PrometheusDown
+          expr: up{job="prometheus"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            component: monitoring
+          annotations:
+            summary: "Prometheus is DOWN"
+            description: "Prometheus server is unreachable"
+
+        - alert: PrometheusHighMemory
+          expr: |
+            container_memory_usage_bytes{pod=~"prometheus-.*"} /
+            container_spec_memory_limit_bytes{pod=~"prometheus-.*"} > 0.9
+          for: 5m
+          labels:
+            severity: warning
+            component: monitoring
+          annotations:
+            summary: "Prometheus high memory usage"
+            description: "Memory: {{ $value | humanizePercentage }}"
+
+---
+# ServiceMonitor for RailConnect Prometheus scraping
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: railconnect-app
+  namespace: railconnect-prod
+  labels:
+    app: railconnect-app
+    release: prometheus
+
+spec:
+  selector:
+    matchLabels:
+      app: railconnect-app
+
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      scheme: http
