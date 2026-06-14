@@ -10,9 +10,11 @@ RUN apt-get update && apt-get install -y \
     docker.io \
     && rm -rf /var/lib/apt/lists/*
 
-# Match the host docker group GID so socket permissions work at runtime.
-# The host docker group is typically GID 999 or 998 — adjust if needed.
-RUN groupmod -g 999 docker || groupadd -g 999 docker \
-    && usermod -aG docker jenkins
+# Allow jenkins user to run docker
+RUN usermod -aG docker jenkins
 
-USER jenkins
+# Entrypoint fixes socket permissions at container start (needed for macOS Docker Desktop)
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+ENTRYPOINT ["/entrypoint.sh"]
