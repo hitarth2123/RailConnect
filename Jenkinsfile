@@ -80,7 +80,7 @@ pipeline {
             post {
                 always {
                     junit 'test-results.xml'
-                    publishCoverage adapters: [coberturaAdapter('coverage.xml')], sourceFileResolver: sourceFiles('STORE_ALL_SOURCE')
+                    archiveArtifacts artifacts: 'coverage.xml', allowEmptyArchive: true
                 }
             }
         }
