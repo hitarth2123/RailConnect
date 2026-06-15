@@ -17,11 +17,11 @@ terraform {
   }
 
   backend "s3" {
-    bucket         = "railconnect-tfstate-540799519950"
-    key            = "railconnect/production/terraform.tfstate"
-    region         = "us-east-1"
-    encrypt        = true
-    use_lockfile   = true
+    bucket       = "railconnect-tfstate-540799519950"
+    key          = "railconnect/staging/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true
   }
 }
 
@@ -31,7 +31,7 @@ provider "aws" {
   default_tags {
     tags = {
       Project     = "railconnect"
-      Environment = "production"
+      Environment = "staging"
       ManagedBy   = "terraform"
     }
   }
@@ -60,10 +60,10 @@ data "aws_availability_zones" "available" {
 }
 
 locals {
-  cluster_name = "railconnect-prod"
+  cluster_name = "railconnect-staging"
   tags = {
     Project     = "railconnect"
-    Environment = "production"
+    Environment = "staging"
     ManagedBy   = "terraform"
   }
 }

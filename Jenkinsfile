@@ -13,7 +13,7 @@ pipeline {
         
         // Application Configuration
         APP_NAME = "railconnect"
-        GITHUB_REPO = "YOUR-USERNAME/railconnect"
+        GITHUB_REPO = "hitarth2123/RailConnect"
         AWS_REGION = "ap-south-1"
         
         // Image tagging: branch-commit-buildnumber

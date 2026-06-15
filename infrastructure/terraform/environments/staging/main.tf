@@ -1,12 +1,12 @@
-# Main Terraform Configuration for RailConnect Production Environment
-# Provisions: VPC, EKS Cluster, RDS PostgreSQL, ElastiCache Redis, IAM roles
+# Main Terraform Configuration for RailConnect Staging Environment
+# Mirrors production at reduced scale and cost
 
 # VPC Module
 module "vpc" {
-  source = "terraform-aws-modules/vpc/aws"
+  source  = "terraform-aws-modules/vpc/aws"
   version = "5.0.0"
 
-  name = "railconnect-prod-vpc"
+  name = "railconnect-staging-vpc"
   cidr = var.vpc_cidr
 
   azs             = slice(data.aws_availability_zones.available.names, 0, 3)
@@ -16,9 +16,8 @@ module "vpc" {
   enable_nat_gateway   = true
   enable_vpn_gateway   = false
   enable_dns_hostnames = true
-  single_nat_gateway   = false # One NAT per AZ for HA
+  single_nat_gateway   = true # Single NAT saves cost in staging
 
-  # Kubernetes specific tags
   private_subnet_tags = {
     "kubernetes.io/role/internal-elb"             = "1"
     "kubernetes.io/cluster/${local.cluster_name}" = "shared"
@@ -46,22 +45,19 @@ module "eks" {
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnets
 
-  # Cluster logging
   cluster_enabled_log_types = ["api", "audit", "authenticator", "controllerManager", "scheduler"]
 
-  # Cluster security group rules
   cluster_security_group_additional_rules = {
     ingress_nodes_ephemeral_ports_tcp = {
-      description                = "Nodes on ephemeral ports"
-      protocol                   = "tcp"
-      from_port                  = 1025
-      to_port                    = 65535
-      type                       = "ingress"
-      source_security_group_id   = module.eks.node_security_group_id
+      description              = "Nodes on ephemeral ports"
+      protocol                 = "tcp"
+      from_port                = 1025
+      to_port                  = 65535
+      type                     = "ingress"
+      source_security_group_id = module.eks.node_security_group_id
     }
   }
 
-  # Node group configuration
   eks_managed_node_groups = {
     general = {
       name            = "railconnect-node-group"
@@ -74,30 +70,25 @@ module "eks" {
       max_size     = var.eks_node_max_size
       desired_size = var.eks_node_desired_size
 
-      # Enable auto scaling discovery
       tags = {
         "k8s.io/cluster-autoscaler/${local.cluster_name}" = "owned"
         "k8s.io/cluster-autoscaler/enabled"               = "true"
       }
 
-      # IAM role policies for nodes
       iam_role_additional_policies = {
         AmazonSSMManagedInstanceCore = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
         CloudWatchAgentServerPolicy  = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
       }
 
-      # Taints for pod scheduling control
       taints = []
 
-      # Labels for pod selectors
       labels = {
-        Environment = "production"
+        Environment = "staging"
         Workload    = "general"
       }
     }
   }
 
-  # Cluster addons
   cluster_addons = {
     coredns = {
       most_recent = true
@@ -110,7 +101,6 @@ module "eks" {
     }
   }
 
-  # OIDC provider for IRSA (IAM Roles for Service Accounts)
   enable_irsa = true
 
   tags = local.tags
@@ -118,8 +108,8 @@ module "eks" {
 
 # Security Group for RDS
 resource "aws_security_group" "rds" {
-  name        = "railconnect-rds-sg"
-  description = "Security group for RailConnect RDS PostgreSQL"
+  name        = "railconnect-staging-rds-sg"
+  description = "Security group for RailConnect Staging RDS PostgreSQL"
   vpc_id      = module.vpc.vpc_id
 
   ingress {
@@ -140,38 +130,36 @@ resource "aws_security_group" "rds" {
   tags = local.tags
 }
 
-# RDS PostgreSQL Database
+# RDS PostgreSQL
 resource "aws_db_subnet_group" "rds" {
-  name       = "railconnect-rds-subnet-group"
+  name       = "railconnect-staging-rds-subnet-group"
   subnet_ids = module.vpc.private_subnets
 
   tags = local.tags
 }
 
 resource "aws_db_instance" "railconnect" {
-  identifier            = "railconnect-db"
-  allocated_storage    = var.rds_allocated_storage
-  storage_type         = "gp3"
-  engine               = "postgres"
-  engine_version       = var.rds_engine_version
-  instance_class       = var.rds_instance_class
-  db_name              = var.rds_database_name
-  username             = var.rds_username
-  password             = var.rds_password
-  parameter_group_name = "default.postgres15"
-  db_subnet_group_name = aws_db_subnet_group.rds.name
+  identifier             = "railconnect-staging-db"
+  allocated_storage      = var.rds_allocated_storage
+  storage_type           = "gp3"
+  engine                 = "postgres"
+  engine_version         = var.rds_engine_version
+  instance_class         = var.rds_instance_class
+  db_name                = var.rds_database_name
+  username               = var.rds_username
+  password               = var.rds_password
+  parameter_group_name   = "default.postgres15"
+  db_subnet_group_name   = aws_db_subnet_group.rds.name
   vpc_security_group_ids = [aws_security_group.rds.id]
 
-  skip_final_snapshot       = false
-  final_snapshot_identifier = "railconnect-db-final-snapshot-${formatdate("YYYY-MM-DD-hhmm", timestamp())}"
+  skip_final_snapshot = true # Fine for staging
 
-  backup_retention_period = 0
-  backup_window          = "03:00-04:00"
-  maintenance_window     = "sun:04:00-sun:05:00"
+  backup_retention_period = 0 # Free tier
+  backup_window           = "03:00-04:00"
+  maintenance_window      = "sun:04:00-sun:05:00"
 
-  publicly_accessible = false
-  multi_az           = true
-
+  publicly_accessible                 = false
+  multi_az                            = false # No HA needed in staging
   storage_encrypted                   = true
   iam_database_authentication_enabled = true
 
@@ -181,8 +169,8 @@ resource "aws_db_instance" "railconnect" {
 # Security Group for Redis
 resource "aws_security_group" "redis" {
   count       = var.enable_redis ? 1 : 0
-  name        = "railconnect-redis-sg"
-  description = "Security group for RailConnect ElastiCache Redis"
+  name        = "railconnect-staging-redis-sg"
+  description = "Security group for RailConnect Staging ElastiCache Redis"
   vpc_id      = module.vpc.vpc_id
 
   ingress {
@@ -203,48 +191,29 @@ resource "aws_security_group" "redis" {
   tags = local.tags
 }
 
-# ElastiCache Redis Cluster
+# ElastiCache Redis — single node for staging
 resource "aws_elasticache_subnet_group" "redis" {
   count      = var.enable_redis ? 1 : 0
-  name       = "railconnect-redis-subnet-group"
+  name       = "railconnect-staging-redis-subnet-group"
   subnet_ids = module.vpc.private_subnets
 
   tags = local.tags
 }
 
 resource "aws_elasticache_cluster" "railconnect" {
-  count              = var.enable_redis ? 1 : 0
-  cluster_id         = "railconnect-redis"
-  engine             = "redis"
-  node_type          = var.redis_node_type
-  num_cache_nodes    = 1
+  count                = var.enable_redis ? 1 : 0
+  cluster_id           = "railconnect-staging-redis"
+  engine               = "redis"
+  node_type            = var.redis_node_type
+  num_cache_nodes      = 1
   parameter_group_name = "default.redis7"
-  engine_version     = "7.0"
-  port               = 6379
-  subnet_group_name  = aws_elasticache_subnet_group.redis[0].name
-  security_group_ids = [aws_security_group.redis[0].id]
+  engine_version       = "7.0"
+  port                 = 6379
+  subnet_group_name    = aws_elasticache_subnet_group.redis[0].name
+  security_group_ids   = [aws_security_group.redis[0].id]
 
-  snapshot_retention_limit = 5
-  snapshot_window         = "03:00-05:00"
-
-  maintenance_window = "sun:05:00-sun:07:00"
-  notification_topic_arn = ""
-
-  log_delivery_configuration {
-    destination      = aws_cloudwatch_log_group.redis_slow_log[0].name
-    destination_type = "cloudwatch-logs"
-    log_format       = "json"
-    log_type         = "slow-log"
-  }
-
-  tags = local.tags
-}
-
-# CloudWatch Log Group for Redis
-resource "aws_cloudwatch_log_group" "redis_slow_log" {
-  count             = var.enable_redis ? 1 : 0
-  name              = "/aws/elasticache/railconnect-redis/slow-log"
-  retention_in_days = 7
+  snapshot_retention_limit = 0
+  maintenance_window       = "sun:05:00-sun:07:00"
 
   tags = local.tags
 }
@@ -260,32 +229,17 @@ output "eks_cluster_name" {
   value       = module.eks.cluster_name
 }
 
-output "eks_cluster_version" {
-  description = "Kubernetes version"
-  value       = module.eks.cluster_version
-}
-
 output "rds_endpoint" {
   description = "RDS endpoint"
   value       = aws_db_instance.railconnect.endpoint
 }
 
-output "rds_database_name" {
-  description = "RDS database name"
-  value       = aws_db_instance.railconnect.db_name
-}
-
 output "redis_endpoint" {
-  description = "Redis cluster endpoint"
+  description = "Redis endpoint"
   value       = try(aws_elasticache_cluster.railconnect[0].cache_nodes[0].address, "N/A")
 }
 
 output "vpc_id" {
   description = "VPC ID"
   value       = module.vpc.vpc_id
-}
-
-output "private_subnet_ids" {
-  description = "Private subnet IDs"
-  value       = module.vpc.private_subnets
 }
